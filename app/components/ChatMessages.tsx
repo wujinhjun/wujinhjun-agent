@@ -8,14 +8,21 @@ type Props = {
 };
 
 export function ChatMessages({ messages, initializing, loading }: Props) {
+  // 为了避免消息过多导致 DOM 过大，这里只展示最近的 N 条
+  const MAX_MESSAGES = 20;
+  const visibleMessages =
+    messages.length > MAX_MESSAGES
+      ? messages.slice(messages.length - MAX_MESSAGES)
+      : messages;
+
   return (
     <section className='flex-1 space-y-2 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm'>
-      {messages.length === 0 && !initializing ? (
+      {visibleMessages.length === 0 && !initializing ? (
         <div className='text-xs text-slate-500'>
           暂时还没有对话，可以在左侧看提示，或者直接在下方输入问题开始一轮对话。
         </div>
       ) : (
-        messages.map((m, i) => (
+        visibleMessages.map((m, i) => (
           <div key={i} className='space-y-0.5'>
             <div className='text-[11px] font-medium text-slate-500'>
               {m.role === 'user' ? '你' : 'Agent'}
@@ -37,7 +44,9 @@ export function ChatMessages({ messages, initializing, loading }: Props) {
         ))
       )}
       {initializing && (
-        <div className='text-[11px] text-slate-500'>正在从本地存储加载历史对话…</div>
+        <div className='text-[11px] text-slate-500'>
+          正在从本地存储加载历史对话…
+        </div>
       )}
       {loading && (
         <div className='flex items-center gap-2 text-[11px] text-slate-500'>
@@ -48,4 +57,3 @@ export function ChatMessages({ messages, initializing, loading }: Props) {
     </section>
   );
 }
-
