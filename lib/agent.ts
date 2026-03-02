@@ -1,5 +1,9 @@
 import OpenAI from 'openai';
-import { runWeatherTool, weatherToolDef } from '@/lib/tools/weather';
+import {
+  runWeatherTool,
+  weatherToolDef,
+  type WeatherToolResult,
+} from '@/lib/tools/weather';
 import { runWikipediaTool, wikipediaToolDef } from '@/lib/tools/wikipedia';
 import { runFileTool, fileToolDef } from '@/lib/tools/fileAnalysis';
 
@@ -53,7 +57,10 @@ export async function runAgent(messages: ChatMessage[]) {
       content:
         '你是一个多工具 Agent，拥有 get_weather、extend_topic、analyze_text_file 三个函数工具。' +
         '在需要时可以调用它们，但请尽量减少调用次数，最多进行两到三轮工具调用。' +
-        '拿到工具结果后，要直接用自然语言向用户总结回答，避免重复调用同一个工具陷入循环。',
+        '拿到工具结果后，要直接用自然语言向用户总结回答，避免重复调用同一个工具陷入循环。' +
+        '当用户询问天气时，请使用简洁的中文 Markdown 列表输出，格式示例：\\n' +
+        '「北京当前天气：\\n- 时间：...\\n- 温度：...℃\\n- 风：... km/h，...风\\n- 天气：多云/晴等\\n- 建议：一句简短建议」。' +
+        '不要在一个长段落里堆太多加粗字段，而是用清晰的项目符号分行展示关键信息。',
     },
     ...messages.map<ChatCompletionMessageParam>((m) => ({
       role: m.role,
@@ -80,14 +87,98 @@ export async function runAgent(messages: ChatMessage[]) {
     // 先把这条带 tool_calls 的 assistant 消息放进对话历史
     chatMessages.push(message);
 
-    // 顺序执行每个工具，并把结果作为 tool 消息追加
+    // 顺序执行每个工具
     for (const toolCall of message.tool_calls) {
       const toolName = toolCall.function.name as string;
       const args = JSON.parse(toolCall.function.arguments || '{}');
 
       let result: unknown;
       if (toolName === 'get_weather') {
-        result = await runWeatherTool(args);
+        const weatherResult = await runWeatherTool(args);
+
+        if ('error' in weatherResult) {
+          // 让模型自己根据错误信息决定是否重试或给出友好提示
+          result = weatherResult;
+        } else {
+          const {
+            location,
+            current_weather: {
+              temperature,
+              windspeed,
+              winddirection,
+              weathercode,
+            },
+          } = weatherResult as WeatherToolResult;
+
+          const beijingTime = new Intl.DateTimeFormat('zh-CN', {
+            timeZone: 'Asia/Shanghai',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+          }).format(new Date());
+
+          const directionLabel = (() => {
+            if (
+              typeof winddirection !== 'number' ||
+              Number.isNaN(winddirection)
+            ) {
+              return '风向未知';
+            }
+            const dirs = [
+              '北',
+              '东北',
+              '东',
+              '东南',
+              '南',
+              '西南',
+              '西',
+              '西北',
+            ];
+            const index = Math.round((winddirection % 360) / 45) % 8;
+            return `${dirs[index]}风`;
+          })();
+
+          const weatherText = (() => {
+            if (typeof weathercode !== 'number') {
+              return `天气代码 ${weathercode}`;
+            }
+
+            if (weathercode === 0) return '晴';
+            if ([1, 2, 3].includes(weathercode)) return '多云或阴';
+            if ([45, 48].includes(weathercode)) return '有雾或雾凇';
+            if ([51, 53, 55].includes(weathercode)) return '毛毛雨';
+            if ([61, 63, 65, 80, 81, 82].includes(weathercode)) return '雨';
+            if ([71, 73, 75, 77, 85, 86].includes(weathercode)) return '雪';
+            if ([95, 96, 99].includes(weathercode)) return '雷暴';
+
+            return `天气代码 ${weathercode}`;
+          })();
+
+          let advice = '气温适中，注意根据体感增减衣物。';
+          if (typeof temperature === 'number') {
+            if (temperature <= 0) {
+              advice = '天气寒冷，出门请穿厚外套并注意保暖。';
+            } else if (temperature <= 10) {
+              advice = '天气偏冷，建议外出时适当增添外套。';
+            } else if (temperature >= 28) {
+              advice = '天气偏热，注意补水和防晒，避免长时间暴晒。';
+            }
+          }
+
+          const lines = [
+            `${location}当前天气：`,
+            `- 时间（北京时间）：${beijingTime}`,
+            `- 温度：${temperature}℃`,
+            `- 风：${windspeed} km/h，${directionLabel}（${winddirection}°）`,
+            `- 天气：${weatherText}`,
+            `- 建议：${advice}`,
+          ];
+
+          return { answer: lines.join('\n') };
+        }
       } else if (toolName === 'extend_topic') {
         result = await runWikipediaTool(args);
       } else if (toolName === 'analyze_text_file') {
