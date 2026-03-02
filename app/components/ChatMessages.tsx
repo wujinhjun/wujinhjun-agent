@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { ChatMsg } from '../../lib/chatTypes';
 import { renderMarkdownToHtml } from '../../lib/markdown';
 
@@ -10,13 +11,29 @@ type Props = {
 export function ChatMessages({ messages, initializing, loading }: Props) {
   // 为了避免消息过多导致 DOM 过大，这里只展示最近的 N 条
   const MAX_MESSAGES = 20;
+  const [showAll, setShowAll] = useState(false);
+
+  const hasMore = messages.length > MAX_MESSAGES;
   const visibleMessages =
-    messages.length > MAX_MESSAGES
-      ? messages.slice(messages.length - MAX_MESSAGES)
-      : messages;
+    showAll || !hasMore
+      ? messages
+      : messages.slice(messages.length - MAX_MESSAGES);
 
   return (
     <section className='flex-1 space-y-2 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm'>
+      {hasMore && (
+        <div className='mb-1 flex justify-center'>
+          <button
+            type='button'
+            className='rounded-full bg-slate-100 px-3 py-1 text-[11px] text-slate-600 hover:bg-slate-200'
+            onClick={() => setShowAll((v) => !v)}
+          >
+            {showAll
+              ? `只看最近 ${MAX_MESSAGES} 条`
+              : `查看更早的 ${messages.length - MAX_MESSAGES} 条消息`}
+          </button>
+        </div>
+      )}
       {visibleMessages.length === 0 && !initializing ? (
         <div className='text-xs text-slate-500'>
           暂时还没有对话，可以在左侧看提示，或者直接在下方输入问题开始一轮对话。
