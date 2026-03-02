@@ -1,21 +1,54 @@
 /* eslint-disable react/jsx-no-useless-fragment */
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { loadChatMessages, persistChatMessages } from '../lib/chatDb';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
 
-export default function Home() {
-  const MAX_FILE_SIZE = 100 * 1024; // 100KB
+const MAX_FILE_SIZE = 100 * 1024; // 100KB
 
+export default function Home() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(true);
 
-  const canSend = (input.trim().length > 0 || !!fileContent) && !loading;
+  const canSend =
+    (input.trim().length > 0 || !!fileContent) && !loading && !initializing;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      setInitializing(true);
+      const persisted = await loadChatMessages<Msg>();
+
+      if (!cancelled && persisted.length > 0) {
+        setMessages(persisted);
+      }
+
+      if (!cancelled) {
+        setInitializing(false);
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+    // 只在首次挂载时执行
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (messages.length === 0) return;
+    void persistChatMessages(messages);
+  }, [messages]);
 
   async function handleSend() {
     if (!input.trim() && !fileContent) return;
@@ -123,13 +156,17 @@ export default function Home() {
             </div>
             <div className='flex items-center gap-1.5 rounded-full bg-slate-900 text-slate-50 px-3 py-1 text-[11px]'>
               <span className='h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400' />
-              {loading ? '正在思考与调用工具…' : '待命中'}
+              {initializing
+                ? '正在从本地存储加载历史对话…'
+                : loading
+                  ? '正在思考与调用工具…'
+                  : '待命中'}
             </div>
           </header>
 
           <div className='flex flex-1 flex-col gap-3 p-4'>
             <section className='flex-1 space-y-2 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm'>
-              {messages.length === 0 ? (
+              {messages.length === 0 && !initializing ? (
                 <div className='text-xs text-slate-500'>
                   暂时还没有对话，可以在左侧看提示，或者直接在下方输入问题开始一轮对话。
                 </div>
@@ -142,14 +179,19 @@ export default function Home() {
                     <div
                       className={
                         m.role === 'user'
-                          ? 'inline-block max-w-full rounded-2xl bg-white px-3 py-2 text-sm text-slate-900 shadow-sm'
-                          : 'inline-block max-w-full rounded-2xl bg-emerald-50 px-3 py-2 text-sm text-emerald-900 shadow-sm'
+                          ? 'inline-block max-w-full whitespace-pre-wrap rounded-2xl bg-white px-3 py-2 text-sm text-slate-900 shadow-sm'
+                          : 'inline-block max-w-full whitespace-pre-wrap rounded-2xl bg-emerald-50 px-3 py-2 text-sm text-emerald-900 shadow-sm'
                       }
                     >
                       {m.content}
                     </div>
                   </div>
                 ))
+              )}
+              {initializing && (
+                <div className='text-[11px] text-slate-500'>
+                  正在从本地存储加载历史对话…
+                </div>
               )}
               {loading && (
                 <div className='text-[11px] text-slate-500'>
