@@ -40,11 +40,16 @@ export async function runWikipediaTool(args: { topic: string; lang?: string }) {
       title,
     )}&format=json`,
   );
-  const search = await searchRes.json();
+  const search = (await searchRes.json()) as {
+    query?: {
+      search?: { title: string }[];
+    };
+  };
 
-  const related = (search.query?.search || [])
-    .slice(0, 5)
-    .map((s: any) => s.title);
+  const related =
+    (search.query?.search || [])
+      .slice(0, 5)
+      .map((s) => s.title);
 
   return {
     title: summary.title,

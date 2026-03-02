@@ -8,8 +8,12 @@ const client = new OpenAI({
   apiKey: process.env.DEEPSEEK_API_KEY,
 });
 
+type ChatCompletionMessageParam =
+  OpenAI.Chat.Completions.ChatCompletionMessageParam;
+type ChatCompletionTool = OpenAI.Chat.Completions.ChatCompletionTool;
+
 // 将我们自己定义的 tool schema 转成 Chat Completions 需要的格式
-const toolsForDeepseek: any[] = [
+const toolsForDeepseek: ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
@@ -43,7 +47,7 @@ export type ChatMessage = {
 
 export async function runAgent(messages: ChatMessage[]) {
   // 加一个 system 提示，限制工具调用次数，鼓励尽快给出总结
-  const chatMessages: any[] = [
+  const chatMessages: ChatCompletionMessageParam[] = [
     {
       role: 'system',
       content:
@@ -51,7 +55,7 @@ export async function runAgent(messages: ChatMessage[]) {
         '在需要时可以调用它们，但请尽量减少调用次数，最多进行两到三轮工具调用。' +
         '拿到工具结果后，要直接用自然语言向用户总结回答，避免重复调用同一个工具陷入循环。',
     },
-    ...messages.map((m) => ({
+    ...messages.map<ChatCompletionMessageParam>((m) => ({
       role: m.role,
       content: m.content,
     })),
@@ -64,12 +68,12 @@ export async function runAgent(messages: ChatMessage[]) {
       messages: chatMessages,
       tools: toolsForDeepseek,
       tool_choice: 'auto',
-    } as any);
+    });
 
-    const message: any = completion.choices[0]?.message;
+    const message = completion.choices[0]?.message;
 
     // 没有工具调用，直接返回内容
-    if (!message.tool_calls || message.tool_calls.length === 0) {
+    if (!message?.tool_calls || message.tool_calls.length === 0) {
       return { answer: message.content ?? '' };
     }
 
