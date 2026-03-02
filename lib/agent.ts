@@ -7,11 +7,6 @@ import {
 import { runWikipediaTool, wikipediaToolDef } from '@/lib/tools/wikipedia';
 import { runFileTool, fileToolDef } from '@/lib/tools/fileAnalysis';
 
-const client = new OpenAI({
-  baseURL: 'https://api.deepseek.com',
-  apiKey: process.env.DEEPSEEK_API_KEY,
-});
-
 type ChatCompletionMessageParam =
   OpenAI.Chat.Completions.ChatCompletionMessageParam;
 type ChatCompletionTool = OpenAI.Chat.Completions.ChatCompletionTool;
@@ -49,7 +44,15 @@ export type ChatMessage = {
   content: string;
 };
 
-export async function runAgent(messages: ChatMessage[]) {
+export type DeepseekConfig = {
+  baseURL: string;
+  apiKey: string;
+};
+
+export async function runAgent(
+  messages: ChatMessage[],
+  config?: DeepseekConfig,
+) {
   // 加一个 system 提示，限制工具调用次数，鼓励尽快给出总结
   const chatMessages: ChatCompletionMessageParam[] = [
     {
@@ -67,6 +70,11 @@ export async function runAgent(messages: ChatMessage[]) {
       content: m.content,
     })),
   ];
+
+  const client = new OpenAI({
+    baseURL: config?.baseURL,
+    apiKey: config?.apiKey,
+  });
 
   // 最多三轮工具调用，避免死循环
   for (let round = 0; round < 3; round += 1) {

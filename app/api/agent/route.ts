@@ -1,18 +1,26 @@
 import { NextResponse } from 'next/server';
-import { runAgent, type ChatMessage } from '@/lib/agent';
+import { runAgent, type ChatMessage, type DeepseekConfig } from '@/lib/agent';
 
 export async function POST(request: Request) {
   const body = await request.json();
 
-  const { messages, fileContent } = body as {
+  const { messages, fileContent, config } = body as {
     messages: { role: string; content: string }[];
     fileContent?: string;
+    config?: DeepseekConfig;
   };
 
-   if (fileContent && fileContent.length > 100 * 1024) {
+  if (fileContent && fileContent.length > 100 * 1024) {
     return NextResponse.json({
       answer:
         '上传的文本内容超过 100KB，目前仅支持不超过 100KB 的 .txt / .md 文件，请裁剪内容后重新上传。',
+    });
+  }
+
+  if (!config?.baseURL || !config?.apiKey) {
+    return NextResponse.json({
+      answer:
+        '当前未配置 Deepseek 的 baseURL 或 API Key，请先在页面右上角打开「Deepseek 设置」完成配置后再发起对话。',
     });
   }
 
@@ -32,7 +40,7 @@ export async function POST(request: Request) {
     });
   }
 
-  const result = await runAgent(enrichedMessages);
+  const result = await runAgent(enrichedMessages, config);
 
   return NextResponse.json(result);
 }
